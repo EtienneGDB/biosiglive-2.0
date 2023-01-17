@@ -143,6 +143,7 @@ if __name__ == "__main__":
         emg_filtered_plot.update(filtered_emg[:, -20:])
 
         if filtered_emg[0][0] != 0:
+            # Median Frequency real time calculation
             Median_Frequency = RealTimeProcessing.custom_processing(
                 self=RealTimeProcessing, funct=process_data_fFreqMed, data_tmp=filtered_emg, interval=False, tps=mtn
             )
@@ -175,7 +176,6 @@ if __name__ == "__main__":
                     if (paired_t_test.pvalue < 0.05) & (Mean_Baseline_MF[iM]-Mean_Evolution_MF[iM] < 0):
                         print(muscle_names[iM], "showed manifestation of muscle fatigue")
                         Baseline_Median_Frequency = Evolution_Median_Frequency[:]
-
 
 
 

@@ -570,7 +570,7 @@ class RealTimeProcessing(GenericProcessing):
     def custom_processing(self, funct, data_tmp, **kwargs):
         tic = time.time()
         data_tmp = funct(data_tmp, **kwargs)
-        self.process_time.append(time.time() - tic)
+        # self.process_time.append(time.time() - tic)
         return data_tmp
 
     def get_mean_process_time(self):

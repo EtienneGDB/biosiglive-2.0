@@ -131,3 +131,13 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+biosiglive/sandbox/FFT using biosiglive filtering.png
+
+biosiglive/sandbox/FFT using my filtering(Pyomeca).png
+
+examples/custom_interface.py
+
+biosiglive/processing/data_processing.py
+
+examples/Offline_Analysis.py

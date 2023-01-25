@@ -15,6 +15,8 @@ from pyomeca import Analogs
 from time import sleep, time
 import datetime
 from scipy import stats
+import scipy.io as sio
+
 import matplotlib.pyplot as plt
 import os
 
@@ -93,7 +95,9 @@ if __name__ == "__main__":
 
     output_file_path = "trial_x.bio"
     if try_offline:
-        interface = MyInterface(system_rate=100, data_path="abd.bio")
+        # interface2 = MyInterface(system_rate=100, data_path="abd.bio")
+        interface = MyInterface(system_rate=100, data_path="emg.bio")
+
         # Get prerecorded data from pickle file for a shoulder abduction
         # offline_emg = load("abd.bio")["emg"]
     else:
@@ -103,25 +107,31 @@ if __name__ == "__main__":
 
 
     # Add markerSet to Vicon interface
-    n_electrodes = 2
+    n_electrodes = 10
+    Calibration_Activation_level = True
+    nTime_Calib = 5
+    # temp = np.zeros((n_electrodes, 0))
+    Baseline_emg_filtered = np.zeros((n_electrodes, nTime_Calib*1000))
     Median_Frequency = np.zeros((n_electrodes, 50))
-    Baseline_Median_Frequency = np.zeros((n_electrodes, 1))
-    Evolution_Median_Frequency = np.zeros((n_electrodes, 1))
-    nSample_Baseline = 267 # (gives about 20 sec of data)
+    Baseline_Median_Frequency = np.zeros((n_electrodes, 0))
+    Evolution_Median_Frequency = np.zeros((n_electrodes, 0))
+    nSample_Baseline = 6 # (gives about 20 sec of data)
     Ev_MF = False
-    nSample_Ev_MF = 50
+    nSample_Ev_MF = 6
     Rest_Act = True
     # t_value = [[], [], [], []]
     # p_value = [[], [], [], []]
 
     output_file_path = "trial_x"
-
-    muscle_names = [
-        "Left biceps",
-        "Right biceps",
+    Muscles = ['Dent1', 'TrapInf', 'Bi', 'Tri', 'Dent2', 'DeltA', 'DeltM',
+               'DeltP', 'TrapSup', 'TrapMed']
+    muscle_names = Muscles
+    # muscle_names = [
+        # "Left biceps",
+        # "Right biceps",
         # "Deltoid medial",
         # "Deltoid posterior",
-    ]
+    # ]
 
     # Add device to Vicon interface
     interface.add_device(
@@ -140,28 +150,29 @@ if __name__ == "__main__":
     )
 
     # Add plot
-    emg_raw_plot = LivePlot(
-        name="emg_raw", rate=100, plot_type=PlotType.Curve, nb_subplots=n_electrodes, channel_names=muscle_names
-    )
-    emg_raw_plot.init(plot_windows=10000, colors=(255, 0, 0), y_labels="EMG (mV)")
+    # emg_raw_plot = LivePlot(
+    #     name="emg_raw", rate=100, plot_type=PlotType.Curve, nb_subplots=n_electrodes, channel_names=muscle_names
+    # )
+    # emg_raw_plot.init(plot_windows=1000, colors=(255, 0, 0), y_labels="EMG (mV)")
 
-    emg_filtered_plot = LivePlot(
-        name="emg_filtered", rate=100, plot_type=PlotType.Curve, nb_subplots=n_electrodes, channel_names=muscle_names
-    )
-    emg_filtered_plot.init(plot_windows=10000, y_labels="emg_filtered")
+    # emg_filtered_plot = LivePlot(
+    #     name="emg_filtered", rate=100, plot_type=PlotType.Curve, nb_subplots=n_electrodes, channel_names=muscle_names
+    # )
+    # emg_filtered_plot.init(plot_windows=10000, y_labels="emg_filtered")
+    #
+    # emg_envelop = LivePlot(
+    #     name="emg_envelop", rate=100, plot_type=PlotType.Curve, nb_subplots=n_electrodes, channel_names=muscle_names
+    # )
+    # emg_envelop.init(plot_windows=10000, colors=(255, 0, 0), y_labels="emg_envelop")
 
-    emg_envelop = LivePlot(
-        name="emg_envelop", rate=100, plot_type=PlotType.Curve, nb_subplots=n_electrodes, channel_names=muscle_names
+    emg_medFreq = LivePlot(name="MedFreq", rate=10, plot_type=PlotType.Curve, nb_subplots=n_electrodes, channel_names=muscle_names
     )
-    emg_envelop.init(plot_windows=10000, colors=(255, 0, 0), y_labels="emg_envelop")
-
-    emg_medFreq = LivePlot(name="MedFreq", rate=100, plot_type=PlotType.Curve, nb_subplots=n_electrodes, channel_names=muscle_names
-    )
-    emg_medFreq.init(plot_windows=500, y_labels="MedFreq")
+    # emg_medFreq.init(plot_windows=50, y_labels="MedFreq")
 
     time_to_sleep = 1 / 100
     count = 0
     # emg_filt=None
+    # start = time()
     while True:
         # if count == 500:
         #     os.system("pause")
@@ -169,32 +180,55 @@ if __name__ == "__main__":
         mtn = datetime.datetime.now()
         raw_emg = interface.get_device_data(device_name="emg")
         filtered_emg = interface.devices[0].process()
-        emg_raw_plot.update(raw_emg)
+        # emg_raw_plot.update(raw_emg)
         # print(interface.devices[0].raw_data.shape)
-        emg_filtered_plot.update(filtered_emg[:, -20:])
+        # emg_filtered_plot.update(filtered_emg[:, -20:])
 
         if filtered_emg[0][0] != 0:
-            # Define Resting Baseline threshold for activation detection
-            if Rest_Act:
-                start = time()
-                Resting_Activation_Threshold = RealTimeProcessing.custom_processing(
-                    self=RealTimeProcessing, funct=threshold_activation_detection, data_tmp=filtered_emg
-                )
-                Rest_Act = False
-
             Activation_level = RealTimeProcessing.custom_processing(
                 self=RealTimeProcessing, funct=envelop, data_tmp=filtered_emg
             )
-            emg_envelop.update(Activation_level[:, -20:])
+            if Calibration_Activation_level:
+                # Set dist_Activation_level
+                if count == 100:
+                    dist_Activation_level = Activation_level[:]
+                    temp_filtered_emg = filtered_emg[:, :-20]
+                    temp_activation_level = Activation_level[:, :-20]
+                if (count > 100) & (dist_Activation_level.shape[1] < nTime_Calib*2000):
+                    dist_Activation_level = np.append(dist_Activation_level, Activation_level[:, -20:], axis=1)
+                if dist_Activation_level.shape[1] == nTime_Calib*2000:
+                    temp_filtered_emg = np.append(temp_filtered_emg, filtered_emg[:, -20:], axis=1)
+                    thresh_Activation_level = np.transpose(np.percentile(dist_Activation_level, [25, 75], axis=1))
+                    for iM in range(n_electrodes):
+                         Baseline_emg_filtered[iM, :] = temp_filtered_emg[iM,
+                            (dist_Activation_level[iM, :] > thresh_Activation_level[iM, 0]) &
+                            (dist_Activation_level[iM, :] < thresh_Activation_level[iM, 1])]
+                    MF = RealTimeProcessing.custom_processing(
+                            self=RealTimeProcessing, funct=process_data_fFreqMed, data_tmp=Baseline_emg_filtered, interval=False, tps=mtn
+                        )
+                    Baseline_Median_Frequency = np.append(Baseline_Median_Frequency, MF, axis=1)
+                    temp_filtered_emg = np.delete(temp_filtered_emg, np.s_[-20:], axis=1)
+                    temp_filtered_emg = np.delete(temp_filtered_emg, np.s_[:5000], axis=1)
+                    temp_activation_level = np.delete(temp_activation_level, np.s_[:5000], axis=1)
+                    Calibration_Activation_level = False
 
-            # Median Frequency real time calculation
-            MF = RealTimeProcessing.custom_processing(
-                self=RealTimeProcessing, funct=process_data_fFreqMed, data_tmp=filtered_emg, interval=False, tps=mtn
-            )
-            Median_Frequency = np.append(Median_Frequency, MF, axis=1)
-            Median_Frequency = np.delete(Median_Frequency, 0, axis=1)
-            Mov_Av_MedFreq = np.mean(Median_Frequency, axis=1)
-            Mov_Av_MedFreq = Mov_Av_MedFreq[:, np.newaxis]
+            temp_filtered_emg = np.append(temp_filtered_emg, filtered_emg[:, -20:], axis=1)
+            temp_activation_level = np.append(temp_activation_level, Activation_level[:, -20:], axis=1)
+            if temp_filtered_emg.shape[1] == 5*2000:
+                xxx = temp_filtered_emg[iM,
+                            (dist_Activation_level[iM, :] > thresh_Activation_level[iM, 0]) &
+                            (dist_Activation_level[iM, :] < thresh_Activation_level[iM, 1])]
+
+                # Median Frequency real time calculation
+                MF = RealTimeProcessing.custom_processing(
+                    self=RealTimeProcessing, funct=process_data_fFreqMed, data_tmp=xxx, interval=False, tps=mtn
+                )
+                temp_filtered_emg = np.delete(temp_filtered_emg, np.s_[:5000], axis=1)
+                # emg_medFreq.update(MF)
+                # Median_Frequency = np.append(Median_Frequency, MF, axis=1)
+                # Median_Frequency = np.delete(Median_Frequency, 0, axis=1)
+                # Mov_Av_MedFreq = np.mean(Median_Frequency, axis=1)
+                # Mov_Av_MedFreq = Mov_Av_MedFreq[:, np.newaxis]
 
             # for iM in range(n_electrodes):
             # if Activation_level.any() > Resting_Activation_Threshold:
@@ -208,38 +242,48 @@ if __name__ == "__main__":
             #     plt.plot([0, 200], [Resting_Activation_Threshold, Resting_Activation_Threshold])
             # plt.show()
 
-            if Baseline_Median_Frequency.shape[1] < nSample_Baseline:
-                Baseline_Median_Frequency = np.append(Baseline_Median_Frequency, Mov_Av_MedFreq, axis=1)
+                if Baseline_Median_Frequency.shape[1] < nSample_Baseline:
+                    Baseline_Median_Frequency = np.append(Baseline_Median_Frequency, MF, axis=1)
 
-            if Ev_MF:
-                Evolution_Median_Frequency = np.append(Evolution_Median_Frequency, Median_Frequency, axis=1)
-                Evolution_Median_Frequency = np.delete(Evolution_Median_Frequency, 0, axis=1)
-                Mean_Evolution_MF = Evolution_Median_Frequency[:, 0:].mean(axis=1)
-                Mean_Evolution_MF = Mean_Evolution_MF.reshape(n_electrodes, 1)
-                # Var_Evolution_MF = Evolution_Median_Frequency.var(axis=1)
-                # Var_Evolution_MF = Var_Evolution_MF.reshape(4, 1)
-                for iM in range(n_electrodes):
-                    paired_t_test = stats.ttest_1samp(Baseline_Median_Frequency[iM],
-                                                    np.mean(Evolution_Median_Frequency[iM]))
-                    # t_value[iM].append(paired_t_test.statistic)
-                    # p_value[iM].append(paired_t_test.pvalue)
-                    if (paired_t_test.pvalue < 0.05) & (Mean_Baseline_MF[iM] - Mean_Evolution_MF[iM] < 0):
-                        print(muscle_names[iM], "showed manifestation of muscle fatigue")
-                        Baseline_Median_Frequency = Evolution_Median_Frequency[:]
+                Evolution_Median_Frequency = np.append(Evolution_Median_Frequency, MF, axis=1)
+                if Evolution_Median_Frequency.shape[1] == nSample_Ev_MF:
+                    for iM in range(n_electrodes):
+                        paired_t_test = stats.ttest_1samp(
+                            Baseline_Median_Frequency[iM], np.mean(Evolution_Median_Frequency[iM])
+                        )
+                        if (paired_t_test.pvalue < 0.05) & (Evolution_Median_Frequency[iM, :].mean() -
+                                                            Baseline_Median_Frequency[iM, :].mean() < 0):
+                            print(muscle_names[iM], "showed manifestation of muscle fatigue")
+                            Baseline_Median_Frequency[iM] = Evolution_Median_Frequency[iM, :]
+                    Evolution_Median_Frequency = np.delete(Evolution_Median_Frequency, np.s_[:nSample_Ev_MF], axis=1)
 
-            if Baseline_Median_Frequency.shape[1] == nSample_Baseline:
-                Baseline_Median_Frequency = np.delete(Baseline_Median_Frequency, 0, axis=1)
-                Mean_Baseline_MF = Baseline_Median_Frequency[:, 0:].mean(axis=1)
-                Mean_Baseline_MF = Mean_Baseline_MF.reshape(n_electrodes, 1)
-                # Var_Baseline_MF = Baseline_Median_Frequency.var(axis=1)
-                # Var_Baseline_MF = Var_Baseline_MF.reshape(4, 1)
-                nSample_Baseline = 0
-                Ev_MF = True
-                Evolution_Median_Frequency = Baseline_Median_Frequency[:, -nSample_Ev_MF:]
+            # if Ev_MF:
+            #     Mean_Evolution_MF = Evolution_Median_Frequency[:, 0:].mean(axis=1)
+            #     Mean_Evolution_MF = Mean_Evolution_MF.reshape(n_electrodes, 1)
+            #     # Var_Evolution_MF = Evolution_Median_Frequency.var(axis=1)
+            #     # Var_Evolution_MF = Var_Evolution_MF.reshape(4, 1)
+            #     for iM in range(n_electrodes):
+            #         paired_t_test = stats.ttest_1samp(Baseline_Median_Frequency[iM],
+            #                                         np.mean(Evolution_Median_Frequency[iM]))
+            #         # t_value[iM].append(paired_t_test.statistic)
+            #         # p_value[iM].append(paired_t_test.pvalue)
+            #         if (paired_t_test.pvalue < 0.05) & (Mean_Baseline_MF[iM] - Mean_Evolution_MF[iM] < 0):
+            #             print(muscle_names[iM], "showed manifestation of muscle fatigue")
+            #             Baseline_Median_Frequency = Evolution_Median_Frequency[:]
+            #
+            # if Baseline_Median_Frequency.shape[1] == nSample_Baseline:
+            #     # Baseline_Median_Frequency = np.delete(Baseline_Median_Frequency, 0, axis=1)
+            #     # Mean_Baseline_MF = Baseline_Median_Frequency[:, 0:].mean(axis=1)
+            #     # Mean_Baseline_MF = Mean_Baseline_MF.reshape(n_electrodes, 1)
+            #     # Var_Baseline_MF = Baseline_Median_Frequency.var(axis=1)
+            #     # Var_Baseline_MF = Var_Baseline_MF.reshape(4, 1)
+            #     nSample_Baseline = 0
+            #     Ev_MF = True
+            #     Evolution_Median_Frequency = Baseline_Median_Frequency[:, -nSample_Ev_MF:]
 
 
 
-            emg_medFreq.update(Mov_Av_MedFreq[:, -1:])
+            # emg_medFreq.update(Mov_Av_MedFreq[:, -1:])
 
 
 
@@ -268,6 +312,8 @@ if __name__ == "__main__":
 
         count += 1
         loop_time = time() - tic
+        # if loop_time > 0.01:
+        #     print(loop_time)
         real_time_to_sleep = time_to_sleep - loop_time
         if real_time_to_sleep > 0:
             sleep(real_time_to_sleep)

@@ -97,7 +97,7 @@ if __name__ == "__main__":
     output_file_path = "trial_x.bio"
     if try_offline:
         # interface2 = MyInterface(system_rate=100, data_path="abd.bio")
-        interface = MyInterface(system_rate=100, data_path="emg.bio")
+        interface = MyInterface(system_rate=100, data_path="delt.bio")
 
         # Get prerecorded data from pickle file for a shoulder abduction
         # offline_emg = load("abd.bio")["emg"]
@@ -108,10 +108,12 @@ if __name__ == "__main__":
 
 
     # Add markerSet to Vicon interface
-    Muscles = ['Dent1', 'TrapInf', 'Bi', 'Tri', 'Dent2', 'DeltA', 'DeltM',
-               'DeltP', 'TrapSup', 'TrapMed']
+    # Muscles = ['Dent1', 'TrapInf', 'Bi', 'Tri', 'Dent2', 'DeltA', 'DeltM',
+    #            'DeltP', 'TrapSup', 'TrapMed']
+    Muscles = ['DeltA', 'DeltM', 'DeltP']
+    # Muscles = ['DeltA']
     muscle_names = Muscles
-    n_electrodes = 10
+    n_electrodes = 3
     Calibration_Activation_level = True
     nTime_Calib = 5
     # temp = np.zeros((n_electrodes, 0))
@@ -138,13 +140,6 @@ if __name__ == "__main__":
 
     output_file_path = "trial_x"
 
-    # muscle_names = [
-        # "Left biceps",
-        # "Right biceps",
-        # "Deltoid medial",
-        # "Deltoid posterior",
-    # ]
-
     # Add device to Vicon interface
     interface.add_device(
         nb_channels=n_electrodes,
@@ -160,6 +155,10 @@ if __name__ == "__main__":
         bpf_lcut=10,
         bpf_hcut=450,
     )
+
+    # Order to give to participant
+    print('Please completely rest muscles for 10 seconds for calibration purpose')
+    # os.system("pause")
 
     # Add plot
     # emg_raw_plot = LivePlot(
@@ -204,6 +203,7 @@ if __name__ == "__main__":
                     self=RealTimeProcessing, funct=threshold_activation_detection, data_tmp=filtered_emg
                 )
                 Rest_Act = False
+                # os.system("pause")
 
             #-----CALCULATE ACTIVATION LEVEL-----
             Activation_level = RealTimeProcessing.custom_processing(
@@ -220,9 +220,18 @@ if __name__ == "__main__":
 
 
             if Calibration_Activation_level:
-                Sum_Act_Level = np.sum(temp_activation_level, axis=0)
+                if n_electrodes > 1:
+                    Sum_Act_Level = np.sum(temp_activation_level, axis=0)
+                else:
+                    Sum_Act_Level = temp_activation_level
                 if IT == 1:
                     dist_Activation_level = np.append(dist_Activation_level, Sum_Act_Level)
+                    MedmaxVal = np.median(nlargest(5000, dist_Activation_level))
+                    IQRmaxVal = stats.iqr(nlargest(5000, dist_Activation_level))
+                    thresh_Activation_level = MedmaxVal + 1.5*IQRmaxVal
+                    IT = IT + 1
+                elif (IT > 1 and IT < 5):
+                    dist_Activation_level = np.append(dist_Activation_level, Sum_Act_Level[-20:])
                     MedmaxVal = np.median(nlargest(5000, dist_Activation_level))
                     IQRmaxVal = stats.iqr(nlargest(5000, dist_Activation_level))
                     thresh_Activation_level = MedmaxVal + 1.5*IQRmaxVal
@@ -234,7 +243,8 @@ if __name__ == "__main__":
                         a = a.astype(int)
                         b = np.diff(a)
                         c = np.array(np.where(b))
-                        c = c.squeeze()
+                        if c.size != 1:
+                            c = c.squeeze()
                         cstart = c[range(0, c.size, 2)]
                         cstop = c[range(1, c.size, 2)]
                         d = np.diff(np.insert(c, 0, 0))
@@ -284,18 +294,30 @@ if __name__ == "__main__":
                             Evolution_Median_Frequency[muscle_names[iM]] = np.delete(Evolution_Median_Frequency[muscle_names[iM]], -1)
                         else:
                             Baseline_MF_Cond[iM] = 1
-                            #integre #-----FILL EVOLUTION MEDIAN FREQUENCY----- ICI
+                            #-----FILL EVOLUTION MEDIAN FREQUENCY-----
                             Evolution_Median_Frequency[muscle_names[iM]] = np.append(Evolution_Median_Frequency[muscle_names[iM]], MF[iM])
+
+                            #-----TELL WHEN MEDIAN FREQUENCY DECREASED BY X%-----
                             if Evolution_Median_Frequency[muscle_names[iM]].shape[0] == nSample_Ev_MF:
-                                paired_t_test = stats.ttest_1samp(
-                                    Baseline_Median_Frequency[muscle_names[iM]],
-                                    np.mean(Evolution_Median_Frequency[muscle_names[iM]])
-                                )
-                                if (paired_t_test.pvalue < 0.05) & (Evolution_Median_Frequency[muscle_names[iM]].mean() -
-                                                                    Baseline_Median_Frequency[muscle_names[iM]].mean() < 0):
-                                    print(muscle_names[iM], "showed manifestation of muscle fatigue")
-                                    # Baseline_Median_Frequency[muscle_names[iM]] = Evolution_Median_Frequency[muscle_names[iM]]
+                                Mean_Baseline_MF = np.mean(Baseline_Median_Frequency[muscle_names[iM]])
+                                Mean_Evolution_MF = np.mean(Evolution_Median_Frequency[muscle_names[iM]])
+                                Percent_MF = Mean_Evolution_MF * 100 / Mean_Baseline_MF
+                                if Percent_MF <= 95:
+                                    print(round(100-Percent_MF, 2), 'Median frequency decreased : please perform an MVC')
+                                    Baseline_Median_Frequency[muscle_names[iM]] = Evolution_Median_Frequency[muscle_names[iM]]
                                 Evolution_Median_Frequency[muscle_names[iM]] = np.delete(Evolution_Median_Frequency[muscle_names[iM]], -1)
+
+                            # #-----TEST IF EVOLUTION MEDIAN FREQUENCY IS SIGNIFICANTLY LOWER THAN Baseline_Median_Frequency-----
+                            # if Evolution_Median_Frequency[muscle_names[iM]].shape[0] == nSample_Ev_MF:
+                            #     paired_t_test = stats.ttest_1samp(
+                            #         Baseline_Median_Frequency[muscle_names[iM]],
+                            #         np.mean(Evolution_Median_Frequency[muscle_names[iM]])
+                            #     )
+                            #     if (paired_t_test.pvalue < 0.05) & (Evolution_Median_Frequency[muscle_names[iM]].mean() -
+                            #                                         Baseline_Median_Frequency[muscle_names[iM]].mean() < 0):
+                            #         print(muscle_names[iM], "showed manifestation of muscle fatigue")
+                            #         # Baseline_Median_Frequency[muscle_names[iM]] = Evolution_Median_Frequency[muscle_names[iM]]
+                            #     Evolution_Median_Frequency[muscle_names[iM]] = np.delete(Evolution_Median_Frequency[muscle_names[iM]], -1)
                 emg_medFreq.update(MF[:, -1:])
 
                 emg_filtered_plot.update(temp_filtered_emg[:, -int(moving_window*2000):])

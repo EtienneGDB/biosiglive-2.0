@@ -135,6 +135,7 @@ if __name__ == "__main__":
     Rest_Act = True
     range_act_level = True
     IT = 1
+    OverActivated = False
     # t_value = [[], [], [], []]
     # p_value = [[], [], [], []]
 
@@ -250,23 +251,34 @@ if __name__ == "__main__":
                         d = np.diff(np.insert(c, 0, 0))
                         e = d[range(1, d.size, 2)]
                         for i in range(len(e)):
-                            if e[i] > 500:
-                                temp_activation_level = np.delete(
-                                    temp_activation_level,
-                                    np.s_[-int(len(dist_Activation_level)-cstart[i]):-int(len(dist_Activation_level)-cstop[i])],
-                                    axis=1)
-                                temp_filtered_emg = np.delete(
-                                    temp_filtered_emg,
-                                    np.s_[-int(len(dist_Activation_level) - cstart[i]):-int(
-                                        len(dist_Activation_level) - cstop[i])],
-                                    axis=1)
-                                dist_Activation_level = np.delete(
-                                    dist_Activation_level,
-                                    np.s_[cstart[i]:cstop[i]])
-                                plt.figure()
-                                plt.plot([0,len(dist_Activation_level)],[thresh_Activation_level,thresh_Activation_level])
-                                plt.plot(dist_Activation_level)
-                                plt.show()
+                            if e[i] > 200:
+                                print("Muscles over activated")
+                                temp_activation_level = np.delete(temp_activation_level, np.s_[0:], axis=1)
+                                temp_filtered_emg = np.delete(temp_filtered_emg, np.s_[0:], axis=1)
+                                dist_Activation_level = np.delete(dist_Activation_level, np.s_[0:])
+                                if Check_IT_overAct == Check_IT:
+                                    Evolution_Median_Frequency[muscle_names[iM]] = np.delete(
+                                        Evolution_Median_Frequency[muscle_names[iM]], -1)
+                                    Check_IT_overAct = Check_IT_overAct + 1
+
+                                # temp_activation_level = np.delete(
+                                #     temp_activation_level,
+                                #     np.s_[-int(len(dist_Activation_level)-cstart[i]):-int(len(dist_Activation_level)-cstop[i])],
+                                #     axis=1)
+                                # temp_filtered_emg = np.delete(
+                                #     temp_filtered_emg,
+                                #     np.s_[-int(len(dist_Activation_level) - cstart[i]):-int(
+                                #         len(dist_Activation_level) - cstop[i])],
+                                #     axis=1)
+                                # dist_Activation_level = np.delete(
+                                #     dist_Activation_level,
+                                #     np.s_[cstart[i]:cstop[i]])
+                                # OverActivated = True
+                                # IT_Del = 1
+                                # plt.figure()
+                                # plt.plot([0,len(dist_Activation_level)],[thresh_Activation_level,thresh_Activation_level])
+                                # plt.plot(dist_Activation_level)
+                                # plt.show()
 
             #-----WHEN ENOUGH DATA BUFFERED-----
             if temp_filtered_emg.shape[1] == min_buffer*2000:
@@ -296,6 +308,8 @@ if __name__ == "__main__":
                             Baseline_MF_Cond[iM] = 1
                             #-----FILL EVOLUTION MEDIAN FREQUENCY-----
                             Evolution_Median_Frequency[muscle_names[iM]] = np.append(Evolution_Median_Frequency[muscle_names[iM]], MF[iM])
+                            Check_IT = 1
+                            Check_IT_overAct = 1
 
                             #-----TELL WHEN MEDIAN FREQUENCY DECREASED BY X%-----
                             if Evolution_Median_Frequency[muscle_names[iM]].shape[0] == nSample_Ev_MF:
@@ -303,7 +317,7 @@ if __name__ == "__main__":
                                 Mean_Evolution_MF = np.mean(Evolution_Median_Frequency[muscle_names[iM]])
                                 Percent_MF = Mean_Evolution_MF * 100 / Mean_Baseline_MF
                                 if Percent_MF <= 95:
-                                    print(round(100-Percent_MF, 2), 'Median frequency decreased : please perform an MVC')
+                                    print('Median frequency decreased by ', round(100-Percent_MF, 2), '%: please perform an MVC')
                                     Baseline_Median_Frequency[muscle_names[iM]] = Evolution_Median_Frequency[muscle_names[iM]]
                                 Evolution_Median_Frequency[muscle_names[iM]] = np.delete(Evolution_Median_Frequency[muscle_names[iM]], -1)
 

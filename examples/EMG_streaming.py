@@ -57,6 +57,12 @@ def threshold_activation_detection(device_data):
     # thresh = np.array(np.mean(thresh_muscle))
     return thresh_muscle
 
+def threshold_overactivation(device_data, window):
+    MedmaxVal = np.median(nlargest(window, device_data))
+    IQRmaxVal = stats.iqr(nlargest(window, device_data))
+    thresh_overactivation = MedmaxVal + 1.5*IQRmaxVal
+    return thresh_overactivation
+
 def median_freq(fft_signal):
     med_freq = []
     for iM in range(fft_signal.shape[0]):
@@ -76,10 +82,6 @@ def median_freq(fft_signal):
     return med_freq
 
 def process_data_fFreqMed(device_data, interval=False, tps=datetime):
-    if interval:
-        if tps.second == tps.second:
-            print("Peut être utilise pour mettre un delai de 1 min entre chaque calcul d'indicateur")
-
     signal = np.array(device_data)
     pyo_signal = Analogs(signal)
     # low_cut = 10
@@ -97,7 +99,7 @@ if __name__ == "__main__":
     output_file_path = "trial_x.bio"
     if try_offline:
         # interface2 = MyInterface(system_rate=100, data_path="abd.bio")
-        interface = MyInterface(system_rate=100, data_path="delt.bio")
+        interface = MyInterface(system_rate=100, data_path="Tri.bio")
 
         # Get prerecorded data from pickle file for a shoulder abduction
         # offline_emg = load("abd.bio")["emg"]
@@ -110,11 +112,16 @@ if __name__ == "__main__":
     # Add markerSet to Vicon interface
     # Muscles = ['Dent1', 'TrapInf', 'Bi', 'Tri', 'Dent2', 'DeltA', 'DeltM',
     #            'DeltP', 'TrapSup', 'TrapMed']
-    Muscles = ['DeltA', 'DeltM', 'DeltP']
-    # Muscles = ['DeltA']
+    # Muscles = ['DeltA', 'DeltM', 'DeltP']
+    Muscles = ['Tri']
     muscle_names = Muscles
-    n_electrodes = 3
-    Calibration_Activation_level = True
+    n_electrodes = 1
+
+    # -----SET PARAMETERS-----
+
+
+    Rest_Act = True # Used to define resting activation level to detect periods of activation
+    Calibration_Activation_level = True # Used to define an activation threshold to filter MVC or higher contractions
     nTime_Calib = 5
     # temp = np.zeros((n_electrodes, 0))
     # Baseline_emg_filtered = np.zeros((n_electrodes, nTime_Calib*1000))
@@ -132,7 +139,6 @@ if __name__ == "__main__":
     nSample_Baseline = 6
     Ev_MF = False
     nSample_Ev_MF = 6
-    Rest_Act = True
     range_act_level = True
     IT = 1
     OverActivated = False
@@ -170,7 +176,7 @@ if __name__ == "__main__":
     emg_filtered_plot = LivePlot(
         name="emg_filtered", rate=100, plot_type=PlotType.Curve, nb_subplots=n_electrodes, channel_names=muscle_names
     )
-    emg_filtered_plot.init(plot_windows=10000, y_labels="emg_filtered")
+    # emg_filtered_plot.init(plot_windows=10000, y_labels="emg_filtered")
 
     emg_envelop = LivePlot(
         name="emg_envelop", rate=100, plot_type=PlotType.Curve, nb_subplots=n_electrodes, channel_names=muscle_names
@@ -179,7 +185,11 @@ if __name__ == "__main__":
 
     emg_medFreq = LivePlot(name="MedFreq", rate=10, plot_type=PlotType.Curve, nb_subplots=n_electrodes, channel_names=muscle_names
     )
-    emg_medFreq.init(plot_windows=50, y_labels="MedFreq")
+    # emg_medFreq.init(plot_windows=50, y_labels="MedFreq")
+
+    emg_thresh = LivePlot(name="Thresh", rate=10, plot_type=PlotType.Curve, nb_subplots=n_electrodes, channel_names=muscle_names
+    )
+    emg_thresh.init(plot_windows=5000, y_labels="Thresh")
 
     time_to_sleep = 1 / 100
     count = 0
@@ -189,8 +199,9 @@ if __name__ == "__main__":
         # if count == 500:
         #     os.system("pause")
         tic = time()
-        mtn = datetime.datetime.now()
+        # mtn = datetime.datetime.now()
         raw_emg = interface.get_device_data(device_name="emg")
+        raw_data = interface.devices[0].raw_data
         filtered_emg = interface.devices[0].process()
         # emg_raw_plot.update(raw_emg)
         # print(interface.devices[0].raw_data.shape)
@@ -219,7 +230,7 @@ if __name__ == "__main__":
                 temp_activation_level = np.append(temp_activation_level, Activation_level[:, -20:], axis=1)
                 temp_filtered_emg = np.append(temp_filtered_emg, filtered_emg[:, -20:], axis=1)
 
-
+            #-----DYNAMIC THRESHOLD TO FILTER MVC-----
             if Calibration_Activation_level:
                 if n_electrodes > 1:
                     Sum_Act_Level = np.sum(temp_activation_level, axis=0)
@@ -227,19 +238,17 @@ if __name__ == "__main__":
                     Sum_Act_Level = temp_activation_level
                 if IT == 1:
                     dist_Activation_level = np.append(dist_Activation_level, Sum_Act_Level)
-                    MedmaxVal = np.median(nlargest(5000, dist_Activation_level))
-                    IQRmaxVal = stats.iqr(nlargest(5000, dist_Activation_level))
-                    thresh_Activation_level = MedmaxVal + 1.5*IQRmaxVal
+                    thresh_Activation_level = threshold_overactivation(dist_Activation_level, 5000)
                     IT = IT + 1
-                elif (IT > 1 and IT < 5):
-                    dist_Activation_level = np.append(dist_Activation_level, Sum_Act_Level[-20:])
-                    MedmaxVal = np.median(nlargest(5000, dist_Activation_level))
-                    IQRmaxVal = stats.iqr(nlargest(5000, dist_Activation_level))
-                    thresh_Activation_level = MedmaxVal + 1.5*IQRmaxVal
+                elif (1 < IT < 403) and len(dist_Activation_level) < 10000:
+                    dist_Activation_level = np.concatenate((dist_Activation_level, Sum_Act_Level[0, -20:]))
+                    thresh_Activation_level = threshold_overactivation(dist_Activation_level, 10000)
                     IT = IT + 1
+                elif IT > 402 and len(dist_Activation_level) < 10000:
+                    dist_Activation_level = np.concatenate((dist_Activation_level, Sum_Act_Level[0, -20:]))
                 else:
-                    dist_Activation_level = np.append(dist_Activation_level, Sum_Act_Level[-20:])
-                    if sum(dist_Activation_level > thresh_Activation_level) > 500:
+                    dist_Activation_level = np.concatenate((dist_Activation_level[20:], Sum_Act_Level[0, -20:]))
+                    if sum(dist_Activation_level[-2000:] > thresh_Activation_level) > 500:
                         a = dist_Activation_level > thresh_Activation_level
                         a = a.astype(int)
                         b = np.diff(a)
@@ -247,21 +256,42 @@ if __name__ == "__main__":
                         if c.size != 1:
                             c = c.squeeze()
                         cstart = c[range(0, c.size, 2)]
-                        cstop = c[range(1, c.size, 2)]
+                        # cstart = cstart[cstart > 8000]
+                        # cstop = c[range(1, c.size, 2)]
                         d = np.diff(np.insert(c, 0, 0))
                         e = d[range(1, d.size, 2)]
+
                         for i in range(len(e)):
-                            if e[i] > 200:
+                            if e[i] > 500:
                                 print("Muscles over activated")
                                 temp_activation_level = np.delete(temp_activation_level, np.s_[0:], axis=1)
                                 temp_filtered_emg = np.delete(temp_filtered_emg, np.s_[0:], axis=1)
-                                dist_Activation_level = np.delete(dist_Activation_level, np.s_[0:])
-                                if Check_IT_overAct == Check_IT:
-                                    Evolution_Median_Frequency[muscle_names[iM]] = np.delete(
-                                        Evolution_Median_Frequency[muscle_names[iM]], -1)
-                                    Check_IT_overAct = Check_IT_overAct + 1
+                                # dist_Activation_level = np.delete(dist_Activation_level, np.s_[
+                                #             cstart[i]-round(len(dist_Activation_level)*0.02):cstop[i]]
+                                #                                   )
+                                dist_Activation_level = np.delete(dist_Activation_level, np.s_[
+                                              cstart[i] - round(len(dist_Activation_level) * 0.05):])
 
-                                # temp_activation_level = np.delete(
+                                thresh_Activation_level = threshold_overactivation(dist_Activation_level, 10000)
+
+                                # if Check_IT_overAct == Ref_IT_overAct:
+                                #     Evolution_Median_Frequency[muscle_names[iM]] = np.delete(
+                                #         Evolution_Median_Frequency[muscle_names[iM]], -1)
+                                #     Check_IT_overAct = Check_IT_overAct + 1
+                                # MedmaxVal = np.median(nlargest(5000, dist_Activation_level))
+                                # IQRmaxVal = stats.iqr(nlargest(5000, dist_Activation_level))
+                                # thresh_Activation_level = MedmaxVal + 1.5 * IQRmaxVal
+                                # print(thresh_Activation_level)
+
+                    New_thresh_Activation_level = threshold_overactivation(dist_Activation_level, 10000)
+                    if (New_thresh_Activation_level > thresh_Activation_level) and (New_thresh_Activation_level < 1.5*thresh_Activation_level):
+                        thresh_Activation_level = New_thresh_Activation_level
+                        # print(thresh_Activation_level)
+
+            xxx = np.array([[thresh_Activation_level]])
+            emg_thresh.update(xxx[:, -1:])
+
+                        # temp_activation_level = np.delete(
                                 #     temp_activation_level,
                                 #     np.s_[-int(len(dist_Activation_level)-cstart[i]):-int(len(dist_Activation_level)-cstop[i])],
                                 #     axis=1)
@@ -285,7 +315,8 @@ if __name__ == "__main__":
 
                 #-----Median Frequency calculation-----
                 MF = RealTimeProcessing.custom_processing(
-                    self=RealTimeProcessing, funct=process_data_fFreqMed, data_tmp=temp_filtered_emg, interval=False, tps=mtn
+                    # self=RealTimeProcessing, funct=process_data_fFreqMed, data_tmp=temp_filtered_emg, interval=False, tps=mtn
+                    self=RealTimeProcessing, funct=process_data_fFreqMed, data_tmp=temp_filtered_emg, interval=False
                 )
 
                 for iM in range(n_electrodes):
@@ -295,7 +326,7 @@ if __name__ == "__main__":
                     #     print(muscle_names[iM], "over activated")
                     #     MF[iM] = 0
                     # else:
-                    #-----SET MF TO "0" IS NOT ENOUGH ACTIVATION-----
+                    #-----SET MF TO "0" IF NOT ENOUGH ACTIVATION-----
                     if sum(temp_activation_level[iM, :] > Resting_Activation_Threshold[iM]) < min_buffer*2000/2:
                         MF[iM] = 0
                     else:
@@ -308,7 +339,7 @@ if __name__ == "__main__":
                             Baseline_MF_Cond[iM] = 1
                             #-----FILL EVOLUTION MEDIAN FREQUENCY-----
                             Evolution_Median_Frequency[muscle_names[iM]] = np.append(Evolution_Median_Frequency[muscle_names[iM]], MF[iM])
-                            Check_IT = 1
+                            Ref_IT_overAct = 1
                             Check_IT_overAct = 1
 
                             #-----TELL WHEN MEDIAN FREQUENCY DECREASED BY X%-----
@@ -316,6 +347,8 @@ if __name__ == "__main__":
                                 Mean_Baseline_MF = np.mean(Baseline_Median_Frequency[muscle_names[iM]])
                                 Mean_Evolution_MF = np.mean(Evolution_Median_Frequency[muscle_names[iM]])
                                 Percent_MF = Mean_Evolution_MF * 100 / Mean_Baseline_MF
+                                Mean_Evolution_MF = np.array([[Mean_Evolution_MF]])
+                                # emg_medFreq.update(Mean_Evolution_MF[:, -1:])
                                 if Percent_MF <= 95:
                                     print('Median frequency decreased by ', round(100-Percent_MF, 2), '%: please perform an MVC')
                                     Baseline_Median_Frequency[muscle_names[iM]] = Evolution_Median_Frequency[muscle_names[iM]]
@@ -332,9 +365,9 @@ if __name__ == "__main__":
                             #         print(muscle_names[iM], "showed manifestation of muscle fatigue")
                             #         # Baseline_Median_Frequency[muscle_names[iM]] = Evolution_Median_Frequency[muscle_names[iM]]
                             #     Evolution_Median_Frequency[muscle_names[iM]] = np.delete(Evolution_Median_Frequency[muscle_names[iM]], -1)
-                emg_medFreq.update(MF[:, -1:])
+                # emg_medFreq.update(MF[:, -1:])
 
-                emg_filtered_plot.update(temp_filtered_emg[:, -int(moving_window*2000):])
+                # emg_filtered_plot.update(temp_filtered_emg[:, -int(moving_window*2000):])
                 emg_envelop.update(temp_activation_level[:, -int(moving_window*2000):])
 
 
@@ -456,8 +489,8 @@ if __name__ == "__main__":
 
         count += 1
         loop_time = time() - tic
-        # if loop_time > 0.01:
-        #     print(loop_time)
+        if loop_time > 0.01:
+            print(loop_time)
         real_time_to_sleep = time_to_sleep - loop_time
         if real_time_to_sleep > 0:
             sleep(real_time_to_sleep)

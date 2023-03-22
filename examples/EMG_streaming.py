@@ -185,11 +185,11 @@ if __name__ == "__main__":
 
     emg_medFreq = LivePlot(name="MedFreq", rate=10, plot_type=PlotType.Curve, nb_subplots=n_electrodes, channel_names=muscle_names
     )
-    # emg_medFreq.init(plot_windows=50, y_labels="MedFreq")
+    emg_medFreq.init(plot_windows=50, y_labels="MedFreq")
 
     emg_thresh = LivePlot(name="Thresh", rate=10, plot_type=PlotType.Curve, nb_subplots=n_electrodes, channel_names=muscle_names
     )
-    emg_thresh.init(plot_windows=5000, y_labels="Thresh")
+    # emg_thresh.init(plot_windows=5000, y_labels="Thresh")
 
     time_to_sleep = 1 / 100
     count = 0
@@ -274,41 +274,23 @@ if __name__ == "__main__":
 
                                 thresh_Activation_level = threshold_overactivation(dist_Activation_level, 10000)
 
-                                # if Check_IT_overAct == Ref_IT_overAct:
-                                #     Evolution_Median_Frequency[muscle_names[iM]] = np.delete(
-                                #         Evolution_Median_Frequency[muscle_names[iM]], -1)
-                                #     Check_IT_overAct = Check_IT_overAct + 1
-                                # MedmaxVal = np.median(nlargest(5000, dist_Activation_level))
-                                # IQRmaxVal = stats.iqr(nlargest(5000, dist_Activation_level))
-                                # thresh_Activation_level = MedmaxVal + 1.5 * IQRmaxVal
-                                # print(thresh_Activation_level)
+                                if Check_IT_overAct == Ref_IT_overAct:
+                                    for iM in range(n_electrodes):
+                                        Evolution_Median_Frequency[muscle_names[iM]] = np.delete(
+                                            Evolution_Median_Frequency[muscle_names[iM]], -3)
+                                        Check_IT_overAct = Check_IT_overAct + 1
 
                     New_thresh_Activation_level = threshold_overactivation(dist_Activation_level, 10000)
                     if (New_thresh_Activation_level > thresh_Activation_level) and (New_thresh_Activation_level < 1.5*thresh_Activation_level):
                         thresh_Activation_level = New_thresh_Activation_level
                         # print(thresh_Activation_level)
 
-            xxx = np.array([[thresh_Activation_level]])
-            emg_thresh.update(xxx[:, -1:])
+            # #-----VISUALIZE THRESHOLD-----
+            # xxx = np.array([[thresh_Activation_level]])
+            # emg_thresh.update(xxx[:, -1:])
 
-                        # temp_activation_level = np.delete(
-                                #     temp_activation_level,
-                                #     np.s_[-int(len(dist_Activation_level)-cstart[i]):-int(len(dist_Activation_level)-cstop[i])],
-                                #     axis=1)
-                                # temp_filtered_emg = np.delete(
-                                #     temp_filtered_emg,
-                                #     np.s_[-int(len(dist_Activation_level) - cstart[i]):-int(
-                                #         len(dist_Activation_level) - cstop[i])],
-                                #     axis=1)
-                                # dist_Activation_level = np.delete(
-                                #     dist_Activation_level,
-                                #     np.s_[cstart[i]:cstop[i]])
-                                # OverActivated = True
-                                # IT_Del = 1
-                                # plt.figure()
-                                # plt.plot([0,len(dist_Activation_level)],[thresh_Activation_level,thresh_Activation_level])
-                                # plt.plot(dist_Activation_level)
-                                # plt.show()
+
+
 
             #-----WHEN ENOUGH DATA BUFFERED-----
             if temp_filtered_emg.shape[1] == min_buffer*2000:
@@ -348,7 +330,7 @@ if __name__ == "__main__":
                                 Mean_Evolution_MF = np.mean(Evolution_Median_Frequency[muscle_names[iM]])
                                 Percent_MF = Mean_Evolution_MF * 100 / Mean_Baseline_MF
                                 Mean_Evolution_MF = np.array([[Mean_Evolution_MF]])
-                                # emg_medFreq.update(Mean_Evolution_MF[:, -1:])
+                                emg_medFreq.update(Mean_Evolution_MF[:, -1:])
                                 if Percent_MF <= 95:
                                     print('Median frequency decreased by ', round(100-Percent_MF, 2), '%: please perform an MVC')
                                     Baseline_Median_Frequency[muscle_names[iM]] = Evolution_Median_Frequency[muscle_names[iM]]
